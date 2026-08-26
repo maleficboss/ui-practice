@@ -1,4 +1,3 @@
-import mock from "./list";
 import ApprovalRow from "./ApprovalRow";
 import Input from "./Input";
 import { useEffect, useState } from "react";
@@ -32,7 +31,6 @@ function App(){
         } 
     }, []);
 
-    
     useEffect(() => {
         const interval = setInterval(() => {
             setTimer((previous) => previous + 1);
@@ -43,7 +41,6 @@ function App(){
     }, []);
 
     
-
     function handlePasted(e){
         /*destructure name and value to the what was typed
         and set pasted to the value */
