@@ -26,17 +26,39 @@ app.get("/approvals/:address", async (req, res) => {
         const approveEvent = ethers.id("Approval(address,address,uint256)");
         // pad the user address to base 32
         const padT032 = ethers.zeroPadValue(userAddress, 32);
-        // filter logic to get the earliest and latest approval, then 
-        // the approval name and owner address
-        const logFilter = {
-            fromBlock: "earliest",
-            toBlock: "latest",
-            topics: [
-                approveEvent, padT032
-            ]
-        };
-        const logs = await rpcProvider.getLogs(logFilter);
-        res.status(200).json({success: true, data: logs});
+        // get the latest block number
+        const lastestBlock = await rpcProvider.getBlockNumber();
+
+
+        // look back 1 month starting from the latest block number
+        const blockLimit = 300;
+        const startFrom = Math.max(0, lastestBlock - blockLimit);
+        // block per request limit
+        const requestLimit = 10;
+        let allLogs = [];
+        // start again at the extreme end of the latest block
+        let currentToBlock = lastestBlock;
+        let currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
+
+        
+        while (currentToBlock >= startFrom) {
+            // filter logic to get the earliest and latest approval, then 
+            // the approval name and owner address
+            const logFilter = {
+                fromBlock: currentFromBlock,
+                toBlock: currentToBlock,
+                topics: [
+                    approveEvent, padT032
+                ]
+            }
+
+            const logs = await rpcProvider.getLogs(logFilter);
+            allLogs = [...allLogs, ...logs];
+            currentToBlock = currentFromBlock - 1;
+            currentFromBlock = Math.max(startFrom, currentToBlock - blockLimit + 1);
+        }
+       
+        res.status(200).json({success: true, data: allLogs});
     }
     catch (err){
         console.log(err);
