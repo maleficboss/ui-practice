@@ -25,6 +25,7 @@ app.get("/approvals", (req, res) => {
 
 app.get("/approvals/:address", async (req, res) => {
     try{
+        /*Phase 1 */
         //get the user address from the search bar
         const userAddress = req.params.address;
         // hash the approval event: the owner, spender and value
@@ -34,7 +35,7 @@ app.get("/approvals/:address", async (req, res) => {
         // get the latest block number
         const lastestBlock = await rpcProvider.getBlockNumber();
 
-
+        /*Phase 2 */
         // look back 1 hour for just 30 requests
         const blockLimit = 60; //300
         const startFrom = Math.max(0, lastestBlock - blockLimit);
@@ -45,7 +46,7 @@ app.get("/approvals/:address", async (req, res) => {
         let currentToBlock = lastestBlock;
         let currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
 
-        
+        /*Phase 3 */
         while (currentToBlock >= startFrom) {
             // filter logic to get the earliest and latest approval, then 
             // the approval name and owner address
@@ -62,6 +63,7 @@ app.get("/approvals/:address", async (req, res) => {
             currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
         }
 
+        /*Phase 4 */
         // store combined string
         const unique = new Set();
         for(const log of allLogs){
@@ -76,13 +78,14 @@ app.get("/approvals/:address", async (req, res) => {
             unique.add(stringKey);
         }
 
+        /*Phase 5 */
         const cache = new Map();
         // map uniques string to get aloowance promise
         const promise = [...unique].map(async (combined) => {
             const [tokenAddress, spenderAddress] = combined.split("-");
             // search for the contract in the cache first
             let tokenContract = cache.get(tokenAddress);
-            // if !=exist, built it and cache it
+            // if !=exist, build it and cache it
             if(!tokenContract) {
                 tokenContract = new ethers.Contract(tokenAddress, miniAbi, rpcProvider);
                 cache.set(tokenAddress, tokenContract);
@@ -100,14 +103,23 @@ app.get("/approvals/:address", async (req, res) => {
         // settle all the allowance rewuats asynchronously
         const settleApproval = await Promise.all(promise);
 
+        /*Phase 6 */
+        // standard infinite max number
+        const MaxUint256 = ethers.MaxUint256;
+        // hedge case
+        const maxUint96 = (1n << 96n) - 1n;
         // check for 0 allowance and filter it out
         const activeApproval = settleApproval
             // delete all rows where allowance is zero
             .filter(approval => approval.amount > 0n)
             .map((approval, index) => {
+                
+                // check if the amount is unlimited
+                const isUnlimited = approval.amount === MaxUint256 || approval.amount === maxUint96;
                 return {
                     id: index + 1,
                     amount: approval.amount.toString(),
+                    isUnlimited,
                     token: approval.token,
                     spender: approval.spender,
                     revoked: approval.revoked
