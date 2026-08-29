@@ -3,12 +3,17 @@ import express from "express";
 import cors from "cors";
 import mock from "./list.js";
 import { ethers } from "ethers";
+import { Contract } from "ethers";
 
 const app = express();
 const port = process.env.PORT || 3000; 
 const rpc = process.env.RPC_URL;
 // connect to eth node
 const rpcProvider = new ethers.JsonRpcProvider(rpc);
+// mini Abi for allowance
+const miniAbi = [
+    "function allowance(address owner, address spender) view returns (uint256)"
+]
 
 app.use(cors({
     origin: ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -33,11 +38,9 @@ app.get("/approvals/:address", async (req, res) => {
         // look back 1 hour for just 30 requests
         const blockLimit = 60; //300
         const startFrom = Math.max(0, lastestBlock - blockLimit);
-
         // block per request limit
         const requestLimit = 10;
         let allLogs = [];
-
         // start again at the extreme end of the latest block
         let currentToBlock = lastestBlock;
         let currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
@@ -53,16 +56,14 @@ app.get("/approvals/:address", async (req, res) => {
                     approveEvent, padTo32
                 ]
             }
-
             const logs = await rpcProvider.getLogs(logFilter);
             allLogs = [...allLogs, ...logs];
-
             currentToBlock = currentFromBlock - 1;
             currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
         }
+
         // store combined string
         const unique = new Set();
-
         for(const log of allLogs){
             // standared checksum address format
             const tokenAddress = ethers.getAddress(log.address);
@@ -75,21 +76,45 @@ app.get("/approvals/:address", async (req, res) => {
             unique.add(stringKey);
         }
 
-        // new array with unique items 
-        // spread the set into an array, map over it and pass in 
-        // the item and index
-        const uniqueApproval = [...unique].map((combined, index) => {
-            const [token, spender] = combined.split("-");
-            return{
-                id: index + 1,
-                amount: "Unlimited",
-                token: token,
-                spender: spender,
+        const cache = new Map();
+        // map uniques string to get aloowance promise
+        const promise = [...unique].map(async (combined) => {
+            const [tokenAddress, spenderAddress] = combined.split("-");
+            // search for the contract in the cache first
+            let tokenContract = cache.get(tokenAddress);
+            // if !=exist, built it and cache it
+            if(!tokenContract) {
+                tokenContract = new ethers.Contract(tokenAddress, miniAbi, rpcProvider);
+                cache.set(tokenAddress, tokenContract);
+            }
+            // call allowance function
+            const bigInt = await tokenContract.allowance(userAddress, spenderAddress);
+
+            return {
+                amount: bigInt,
+                token: tokenAddress,
+                spender: spenderAddress,
                 revoked: false
             }
         });
+        // settle all the allowance rewuats asynchronously
+        const settleApproval = await Promise.all(promise);
+
+        // check for 0 allowance and filter it out
+        const activeApproval = settleApproval
+            // delete all rows where allowance is zero
+            .filter(approval => approval.amount > 0n)
+            .map((approval, index) => {
+                return {
+                    id: index + 1,
+                    amount: approval.amount.toString(),
+                    token: approval.token,
+                    spender: approval.spender,
+                    revoked: approval.revoked
+                }
+            });
        
-        res.status(200).json({success: true, data: uniqueApproval});
+        res.status(200).json({success: true, data: activeApproval});
     }
     catch (err){
         console.log(err);
