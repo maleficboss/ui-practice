@@ -1,3 +1,5 @@
+import { ethers } from "ethers";
+
 /*destructure all props passed from parent
 token=token in question
 spender=wallet that moved the funds
@@ -6,15 +8,19 @@ id=id in the mock array
 onRevoke=function that set allowance to 0
 revoked=flag for checking if onRevoked has been called. t/f
 */
-function ApprovalRow({token, spender, amount, id, onRevoke, revoked}){
-    //max amt of number i can get
-    const maxNum = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
-    //check if the amount allowed if unlimited/equals to max amt of number
-    const isUnlimited = amount === maxNum;
+function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited}){
     //check if revoke has been set to true
     const isRevoked = revoked;
-    
 
+    const formttedAmount = (raw) => {
+        try{
+            const formatted = ethers.formatUnits(raw, 18);
+            return parseFloat(formatted).toFixed(4);
+        }catch(err){
+            return raw;
+        }
+    }
+    
     return(
         <tr className={isUnlimited ? "unlimited" : ""}>
             <td>{id}</td>
@@ -24,7 +30,10 @@ function ApprovalRow({token, spender, amount, id, onRevoke, revoked}){
             </td>
             <td>{token}</td>
             <td>{spender}</td>
-            <td><button onClick={() => onRevoke(id)}>Revoke</button></td>
+            <td><button onClick={() => onRevoke(id)} disabled={isRevoked}>
+                    {isRevoked ? "Revoked" : "Revoke"}
+                </button>
+            </td>
         </tr>
     );
 }

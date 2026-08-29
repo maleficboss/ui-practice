@@ -1,36 +1,52 @@
 import ApprovalRow from "./ApprovalRow";
 import Input from "./Input";
 import { useEffect, useState } from "react";
+import { ethers } from "ethers";
 
 function App(){
     const [revoke, setRevoke] = useState([]);
     const [paste, setPasted] = useState("");
     const [timer, setTimer] = useState(0)
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [searched, setSearched] = useState(false);
 
-    useEffect(() => {
-        let ignore = false;
 
-        async function loadApprovals(){
-            try{
-                const res = await fetch("http://localhost:3000/approvals");
-                const data = await res.json();
-                if(!ignore) setRevoke(data);
-            } catch (err){
-                if(!ignore) setError(err);
-            } finally {
-                if(!ignore) setLoading(false);
+    async function scan (e){
+        e.preventDefault();
+        // clear old data states
+        setError(null);
+        setRevoke([]);
+
+        // check if it is a valid eth address
+        if(!ethers.isAddress(paste)){
+            setError("This is not a valid Eth address, the wallet must start with prefix '0x'!");
+            return;
+        }
+        
+        setLoading(true);
+
+        try{
+            const res = await fetch(`http://localhost:3000/approvals/${paste}`);
+            const parsed = await res.json();
+            // if fetch is successful
+            if(res.ok){
+                setRevoke(parsed.data);
+                setTimer(0);
+                setSearched(true);
+            }else{
+                setError(parsed.data || "Unable to get blockchain history.");
             }
         }
+        catch (err){
+            setError("Server down or connection timed out");
+        } finally{
+            setLoading(false);
+        }
+    }
 
-        loadApprovals();
 
-        return () => {
-            ignore = true;
-        } 
-    }, []);
-
+    // timer
     useEffect(() => {
         const interval = setInterval(() => {
             setTimer((previous) => previous + 1);
@@ -46,6 +62,7 @@ function App(){
         and set pasted to the value */
         const {value} = e.target;
         setPasted(value);
+        setSearched(false);
     }
     
     function handleRevoke(id){
@@ -58,23 +75,20 @@ function App(){
         ));
     }
 
-    /*look through the mock array, for each row, check if the wallet pasted 
-    exists*/
-    const visibleRows = revoke.filter(rev => 
-        rev.spender.toLowerCase().includes(paste.toLowerCase()) || rev.token.toLowerCase().includes(paste.toLowerCase())
-    );
     
     return (
         <div>
-            <Input value={paste} onPaste={handlePasted} />
+            <form onSubmit={scan}>
+                <Input value={paste} onPaste={handlePasted} loading={loading}/>
+            </form>
+            
             <p>Last scanned: {timer}s ago</p>
 
             {loading && <p>loading approvals...</p>}
-            {error && <p>Wallet could not be scanned.</p>}
-            {!loading && !error && revoke.length === 0 && <p>No approvals found.</p>}
+            {error && <p style={{color: "red", fontWeight: "bold"}}>{error}</p>}
+            {!loading && !error && searched && revoke.length === 0 && paste &&  <p>No approvals found.</p>}
             {!loading && !error && revoke.length > 0 && (
                 <div>
-                    
                     <table>
                         <thead>
                             <tr>
@@ -86,9 +100,9 @@ function App(){
                             </tr>
                         </thead>
                         <tbody>
-                            {visibleRows.map((rev) => (
+                            {revoke.map((rev) => (
                                 <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked}
-                                    key={rev.id} id={rev.id} token={rev.token}
+                                    isUnlimited={rev.isUnlimited} key={rev.id} id={rev.id} token={rev.token}
                                     spender={rev.spender} amount={rev.amount}
                                 />
                             ))}
