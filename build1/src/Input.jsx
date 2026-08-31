@@ -1,9 +1,9 @@
-function Input({onPaste, value, loading}){
+function Input({onInputChange, value, loading}){
     return(
         <div style={{ display: "flex", gap: "7px", alignItems: "center"}}>
             <input 
                 name="wallet" value={value}
-                placeholder="paste your wallet" onChange={(e) => onPaste(e)}
+                placeholder="paste your wallet" onChange={(e) => onInputChange(e)}
                 disabled={loading} style={{padding: "8px", width: "310px"}}
             />
             <button 

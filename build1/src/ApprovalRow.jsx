@@ -8,17 +8,13 @@ id=id in the mock array
 onRevoke=function that set allowance to 0
 revoked=flag for checking if onRevoked has been called. t/f
 */
-function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited}){
+function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited, decimals}){
     //check if revoke has been set to true
     const isRevoked = revoked;
 
-    const formttedAmount = (raw) => {
-        try{
-            const formatted = ethers.formatUnits(raw, 18);
-            return parseFloat(formatted).toFixed(4);
-        }catch(err){
-            return raw;
-        }
+    const formattedAmount = (raw) => {
+        const formatted = ethers.formatUnits(raw, decimals);
+        return parseFloat(formatted).toFixed(4);
     }
     
     return(
@@ -26,7 +22,7 @@ function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited
             <td>{id}</td>
             <td>
                 {isRevoked && <span style={{color:"gray"}}>Revoked</span>}
-                {!isRevoked && (isUnlimited ? "Unlimited" : amount)}
+                {!isRevoked && (isUnlimited ? "Unlimited" : formattedAmount(amount))}
             </td>
             <td>{token}</td>
             <td>{spender}</td>

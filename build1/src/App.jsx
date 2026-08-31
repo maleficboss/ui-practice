@@ -57,7 +57,7 @@ function App(){
     }, []);
 
     
-    function handlePasted(e){
+    function handleInputChange(e){
         /*destructure name and value to the what was typed
         and set pasted to the value */
         const {value} = e.target;
@@ -79,7 +79,7 @@ function App(){
     return (
         <div>
             <form onSubmit={scan}>
-                <Input value={paste} onPaste={handlePasted} loading={loading}/>
+                <Input value={paste} onInputChange={handleInputChange} loading={loading}/>
             </form>
             
             <p>Last scanned: {timer}s ago</p>
@@ -103,7 +103,7 @@ function App(){
                             {revoke.map((rev) => (
                                 <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked}
                                     isUnlimited={rev.isUnlimited} key={rev.id} id={rev.id} token={rev.token}
-                                    spender={rev.spender} amount={rev.amount}
+                                    spender={rev.spender} amount={rev.amount} decimals={rev.decimals}
                                 />
                             ))}
                         </tbody>
