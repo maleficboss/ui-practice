@@ -3,7 +3,6 @@ import express from "express";
 import cors from "cors";
 import mock from "./list.js";
 import { ethers } from "ethers";
-import { Contract } from "ethers";
 
 const app = express();
 const port = process.env.PORT || 3000; 
@@ -12,7 +11,8 @@ const rpc = process.env.RPC_URL;
 const rpcProvider = new ethers.JsonRpcProvider(rpc);
 // mini Abi for allowance
 const miniAbi = [
-    "function allowance(address owner, address spender) view returns (uint256)"
+    "function allowance(address owner, address spender) view returns (uint256)",
+    "function decimals() view returns (uint8)"
 ]
 
 app.use(cors({
@@ -37,7 +37,7 @@ app.get("/approvals/:address", async (req, res) => {
 
         /*Phase 2 */
         // look back 1 hour for just 30 requests
-        const blockLimit = 60; //300
+        const blockLimit = 60; //300-60
         const startFrom = Math.max(0, lastestBlock - blockLimit);
         // block per request limit
         const requestLimit = 10;
@@ -90,11 +90,15 @@ app.get("/approvals/:address", async (req, res) => {
                 tokenContract = new ethers.Contract(tokenAddress, miniAbi, rpcProvider);
                 cache.set(tokenAddress, tokenContract);
             }
-            // call allowance function
-            const bigInt = await tokenContract.allowance(userAddress, spenderAddress);
+            // call allowance and decimal function
+            const [bigInt, decimals] = await Promise.all([
+                tokenContract.allowance(userAddress, spenderAddress),
+                tokenContract.decimals()
+            ]);
 
             return {
                 amount: bigInt,
+                decimals,
                 token: tokenAddress,
                 spender: spenderAddress,
                 revoked: false
@@ -119,6 +123,7 @@ app.get("/approvals/:address", async (req, res) => {
                 return {
                     id: index + 1,
                     amount: approval.amount.toString(),
+                    decimals: Number(approval.decimals),
                     isUnlimited,
                     token: approval.token,
                     spender: approval.spender,
