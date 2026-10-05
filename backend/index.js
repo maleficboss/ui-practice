@@ -25,117 +25,96 @@ app.get("/approvals", (req, res) => {
 
 app.get("/approvals/:address", async (req, res) => {
     try{
-        /*Phase 1 */
-        //get the user address from the search bar
-        const userAddress = req.params.address;
-        // hash the approval event: the owner, spender and value
-        const approveEvent = ethers.id("Approval(address,address,uint256)");
-        // pad the user address to base 32
-        const padTo32 = ethers.zeroPadValue(userAddress, 32);
-        // get the latest block number
-        const lastestBlock = await rpcProvider.getBlockNumber();
+        // Phase 1
+        const address = req.params.address;
 
-        /*Phase 2 */
-        // look back 1 hour for just 30 requests
-        const blockLimit = 60; //300-60
-        const startFrom = Math.max(0, lastestBlock - blockLimit);
-        // block per request limit
+        if(!ethers.isAddress(address)){
+            return res.status(400).json({success: false, error: "Invalid address"});
+        }
+        const hash = ethers.id("Approval(address,address,uint256)");
+        const padTo32 = ethers.zeroPadValue(address, 32);
+        const latestBlock = await rpcProvider.getBlockNumber();
+        
+        // Phase 2
+        const blockLimit = 300;
         const requestLimit = 10;
+        const startFrom = Math.max(0, latestBlock - blockLimit);
         let allLogs = [];
-        // start again at the extreme end of the latest block
-        let currentToBlock = lastestBlock;
+        let currentToBlock = latestBlock;
         let currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
 
-        /*Phase 3 */
-        while (currentToBlock >= startFrom) {
-            // filter logic to get the earliest and latest approval, then 
-            // the approval name and owner address
-            const logFilter = {
+        // Phase 3
+        while(currentToBlock >= startFrom){
+            const filter = {
                 fromBlock: currentFromBlock,
                 toBlock: currentToBlock,
                 topics: [
-                    approveEvent, padTo32
+                    hash, padTo32
                 ]
             }
-            const logs = await rpcProvider.getLogs(logFilter);
+            const logs = await rpcProvider.getLogs(filter);
             allLogs = [...allLogs, ...logs];
             currentToBlock = currentFromBlock - 1;
             currentFromBlock = Math.max(startFrom, currentToBlock - requestLimit + 1);
         }
 
-        /*Phase 4 */
-        // store combined string
-        const unique = new Set();
+        // Phase 4
+        const dedup = new Set();
         for(const log of allLogs){
-            // standared checksum address format
-            const tokenAddress = ethers.getAddress(log.address);
-            // unpad the spender address into a usable byto 20 address
-            const clean = ethers.dataSlice(log.topics[2], 12);
-            const spenderAddress = ethers.getAddress(clean);
-            // crete a unique stiring with the token and spender together
-            const stringKey = `${tokenAddress}-${spenderAddress}`;
-            // add the unique string to the set
-            unique.add(stringKey);
+            const token = ethers.getAddress(log.address);
+            const spender = ethers.getAddress(ethers.dataSlice(log.topics[2], 12));
+            const concat = `${token}-${spender}`;
+            dedup.add(concat);
         }
 
-        /*Phase 5 */
+        // Phase 5
         const cache = new Map();
-        // map uniques string to get aloowance promise
-        const promise = [...unique].map(async (combined) => {
-            const [tokenAddress, spenderAddress] = combined.split("-");
-            // search for the contract in the cache first
-            let tokenContract = cache.get(tokenAddress);
-            // if !=exist, build it and cache it
-            if(!tokenContract) {
-                tokenContract = new ethers.Contract(tokenAddress, miniAbi, rpcProvider);
-                cache.set(tokenAddress, tokenContract);
+        const promise = [...dedup].map(async (concat) => {
+            const [token, spender] = concat.split("-");
+            let contract = cache.get(token);
+
+            if(!contract) {
+                contract = new ethers.Contract(token, miniAbi, rpcProvider);
+                cache.set(token, contract);
             }
-            // call allowance and decimal function
-            const [bigInt, decimals] = await Promise.all([
-                tokenContract.allowance(userAddress, spenderAddress),
-                tokenContract.decimals()
+
+            const [amount, decimals] = await Promise.all([
+                contract.allowance(address, spender),
+                contract.decimals()
             ]);
 
             return {
-                amount: bigInt,
-                decimals,
-                token: tokenAddress,
-                spender: spenderAddress,
-                revoked: false
+                amount, decimals, token, spender
             }
         });
-        // settle all the allowance rewuats asynchronously
         const settleApproval = await Promise.all(promise);
 
-        /*Phase 6 */
-        // standard infinite max number
-        const MaxUint256 = ethers.MaxUint256;
-        // hedge case
+        // Phase 6
+        const maxUint256 = ethers.MaxUint256;
         const maxUint96 = (1n << 96n) - 1n;
-        // check for 0 allowance and filter it out
-        const activeApproval = settleApproval
-            // delete all rows where allowance is zero
-            .filter(approval => approval.amount > 0n)
-            .map((approval, index) => {
-                
-                // check if the amount is unlimited
-                const isUnlimited = approval.amount === MaxUint256 || approval.amount === maxUint96;
-                return {
-                    id: index + 1,
-                    amount: approval.amount.toString(),
-                    decimals: Number(approval.decimals),
-                    isUnlimited,
-                    token: approval.token,
-                    spender: approval.spender,
-                    revoked: approval.revoked
+        const approval = settleApproval
+            .filter(approve => approve.amount > 0n)
+            .map((approve, index) => {
+                const isUnlimited = approve.amount === maxUint256 || approve.amount === maxUint96;
+                return{
+                    id: index + 1, isUnlimited, amount: approve.amount.toString(),
+                    decimals: Number(approve.decimals), token: approve.token, spender: approve.spender,
+                    revoked: false
                 }
             });
-       
-        res.status(200).json({success: true, data: activeApproval});
+
+        res.status(200).json({success: true, data: approval});
     }
-    catch (err){
-        console.log(err);
-        res.status(500).json({success: false, data: err.message});
+    catch(error){
+        console.error(error);
+        if(error?.error?.code === 429){
+            return res
+                .set("Retry-After", "10")
+                .status(429)
+                .json({success: false, error: "The service is busy, try again in 10 seconds"});
+        }
+
+        res.status(500).json({success: false, error: error.message});
     }
 });
 
