@@ -114,7 +114,7 @@ app.get("/approvals/:address", async (req, res) => {
                 .json({success: false, error: "The service is busy, try again in 10 seconds"});
         }
 
-        res.status(500).json({success: false, error: error.message});
+        res.status(500).json({success: false, error: "Something failed on our side"});
     }
 });
 
