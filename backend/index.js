@@ -12,12 +12,22 @@ const rpcProvider = new ethers.JsonRpcProvider(rpc);
 // mini Abi for allowance
 const miniAbi = [
     "function allowance(address owner, address spender) view returns (uint256)",
-    "function decimals() view returns (uint8)"
+    "function decimals() view returns (uint8)",
+    "function symbol() view returns (string)"
 ]
 
 app.use(cors({
     origin: ["http://localhost:5173", "http://127.0.0.1:5173"]
 }));
+
+async function getSymbolAndDecimal(run){
+    try{
+        return await run();
+    }catch(error){
+        if(error.code === "CALL_EXCEPTION" || error.code === "BAD_DATA") return null;
+        throw error;
+    }
+}
 
 app.get("/approvals", (req, res) => {
     res.json(mock);
@@ -61,6 +71,7 @@ app.get("/approvals/:address", async (req, res) => {
         // Phase 4
         const dedup = new Set();
         for(const log of allLogs){
+            if(log.topics.length !==3) continue;
             const token = ethers.getAddress(log.address);
             const spender = ethers.getAddress(ethers.dataSlice(log.topics[2], 12));
             const concat = `${token}-${spender}`;
@@ -78,13 +89,14 @@ app.get("/approvals/:address", async (req, res) => {
                 cache.set(token, contract);
             }
 
-            const [amount, decimals] = await Promise.all([
+            const [amount, decimals, tokenSymbol] = await Promise.all([
                 contract.allowance(address, spender),
-                contract.decimals()
+                getSymbolAndDecimal(() => contract.decimals()),
+                getSymbolAndDecimal(() => contract.symbol())
             ]);
 
             return {
-                amount, decimals, token, spender
+                amount, decimals, token, spender, symbol: tokenSymbol
             }
         });
         const settleApproval = await Promise.all(promise);
@@ -96,10 +108,12 @@ app.get("/approvals/:address", async (req, res) => {
             .filter(approve => approve.amount > 0n)
             .map((approve, index) => {
                 const isUnlimited = approve.amount === maxUint256 || approve.amount === maxUint96;
+                const tokenSymbol = approve.symbol || null;
                 return{
                     id: index + 1, isUnlimited, amount: approve.amount.toString(),
-                    decimals: Number(approve.decimals), token: approve.token, spender: approve.spender,
-                    revoked: false
+                    decimals: approve.decimals === null ? null : Number(approve.decimals), 
+                    token: approve.token, spender: approve.spender,
+                    revoked: false, symbol: tokenSymbol
                 }
             });
 
