@@ -1,3 +1,9 @@
+// Phase 1: Mock approvals
+// Fake approval rows in the old shape (no decimals, symbol or isUnlimited fields).
+// The backend's /approvals route sends this list back as-is.
+// The huge amounts are MaxUint256, the value used for an "unlimited" approval.
+// WETH has amount "0": the real scan route (/approvals/:address) drops zero allowances,
+// so a row like this would never come back from a real scan.
 const mock = [
   {
     id: 1,
@@ -50,4 +56,6 @@ const mock = [
   }
 ];
 
+// Phase 2: Export
+// Makes the list importable as `mock`.
 export default mock;

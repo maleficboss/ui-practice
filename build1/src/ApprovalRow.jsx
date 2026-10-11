@@ -9,9 +9,18 @@ onRevoke=function that set allowance to 0
 revoked=flag for checking if onRevoked has been called. t/f
 */
 function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited, decimals, symbol}){
+    // Phase 1: Revoked flag
+    // Copies the revoked prop into a readable name used by the amount cell and the button.
+
     //check if revoke has been set to true
     const isRevoked = revoked;
 
+
+    // Phase 2: Formatting helpers
+    // truncateAddress shortens an address to 0x1234...abcd.
+    // cleanSymbol cuts token symbols longer than 8 characters.
+    // formattedAmount turns the raw on-chain number into a readable one using the token's
+    // decimals, shows "<0.0001" for dust, and falls back to the raw number if decimals are unknown.
     const truncateAddress = (address) => {
         if(!address) return "";
         return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -29,10 +38,19 @@ function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited
         return num.toFixed(4);
     };
 
+
+    // Phase 3: Prepare what the row shows
+    // Runs the helpers once, before the JSX, so the markup below only reads finished values.
     const displaySymbol = cleanSymbol(symbol);
     const reducedTokenAddress = truncateAddress(token);
     const reducedSpenderAddress = truncateAddress(spender);
-    
+
+
+    // Phase 4: Render the row
+    // Unlimited approvals get the "unlimited" class so they can be highlighted.
+    // Cells: id, token (symbol if the contract has one, otherwise the short address),
+    // amount (Revoked / Unlimited / formatted number), spender, and the revoke button.
+    // Hovering the token or spender cell shows the full address.
     return(
         <tr className={isUnlimited ? "unlimited" : ""}>
             <td>{id}</td>

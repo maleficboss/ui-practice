@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
 
+// Phase 1: Look-and-feel constants
+// Defined outside the component so they are created once, not on every render:
+// the grain mask, the switch-on flicker, the dimmed "off" level and the shared glow position.
+
 /* Noise used as an alpha mask on the outer glow, gives the stippled look. */
 const GRAIN = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 9 -4.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
 
@@ -29,7 +33,11 @@ on=true when the bulb should be lit
 glassRef=ref attached to the glass, App uses it to find where the light is
 Must be rendered inside a position:relative wrapper around the Scan button.
 */
+
 function Bulb({ on, glassRef }) {
+    // Phase 2: Flicker when the bulb turns on
+    // Whenever "on" becomes true, play the flicker once on the glow.
+    // Skipped for users whose system asks for reduced motion.
     const glowRef = useRef(null);
 
     useEffect(() => {
@@ -38,12 +46,20 @@ function Bulb({ on, glassRef }) {
         glowRef.current.animate(FLICKER, { duration: 800, easing: "ease-out" });
     }, [on]);
 
+
+    // Phase 3: Socket colours
+    // Brass when lit, dark when off. The fill and stroke fade between the two.
     const socketStyle = {
         fill: on ? "#5a4a2c" : "#1d1a15",
         stroke: on ? "#b39860" : "#4a4032",
         transition: "fill .3s, stroke .3s",
     };
 
+    
+    // Phase 4: Render
+    // A box pinned above the Scan button holding three layers:
+    // the cord, the glow (grainy outer halo + smooth inner halo), and the SVG socket and glass.
+    // The glass path carries glassRef, which is what App measures to place the background.
     return (
         <div
             aria-hidden="true"
@@ -113,6 +129,7 @@ function Bulb({ on, glassRef }) {
                 />
             </div>
 
+            {/* socket and glass */}
             <svg
                 viewBox="0 0 60 88"
                 xmlns="http://www.w3.org/2000/svg"
