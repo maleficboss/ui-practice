@@ -71,7 +71,7 @@ function App(){
                 setLastScan((count) => count + 1); // first success starts the Last scanned timer
                 setSearched(true);
             }else{
-                setError(parsed.data || "Unable to get blockchain history.");
+                setError(parsed.error || "Unable to get blockchain history.");
             }
         }
         catch (err){
@@ -146,8 +146,8 @@ function App(){
                             <thead>
                                 <tr>
                                     <th>Id</th>
-                                    <th>Amount</th>
                                     <th>Token</th>
+                                    <th>Amount</th>
                                     <th>Spender</th>
                                     <th>Revoke Approval</th>
                                 </tr>
@@ -156,7 +156,7 @@ function App(){
                                 {revoke.map((rev) => (
                                     <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked}
                                         isUnlimited={rev.isUnlimited} key={rev.id} id={rev.id} token={rev.token}
-                                        spender={rev.spender} amount={rev.amount} decimals={rev.decimals}
+                                        spender={rev.spender} amount={rev.amount} decimals={rev.decimals} symbol={rev.symbol}
                                     />
                                 ))}
                             </tbody>
