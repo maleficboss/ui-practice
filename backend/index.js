@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { collectPairs } from "./pairs.js";
 import mock from "./list.js";
 import { ethers } from "ethers";
 
@@ -69,14 +70,7 @@ app.get("/approvals/:address", async (req, res) => {
         }
 
         // Phase 4
-        const dedup = new Set();
-        for(const log of allLogs){
-            if(log.topics.length !==3) continue;
-            const token = ethers.getAddress(log.address);
-            const spender = ethers.getAddress(ethers.dataSlice(log.topics[2], 12));
-            const concat = `${token}-${spender}`;
-            dedup.add(concat);
-        }
+        const dedup = collectPairs(allLogs);
 
         // Phase 5
         const cache = new Map();
