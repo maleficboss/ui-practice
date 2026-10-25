@@ -2,7 +2,11 @@ import ApprovalRow from "./ApprovalRow";
 import Input from "./Input";
 import ChevronBackground from "./ChevronBackground";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ethers } from "ethers";
+import { ethers, resolveAddress } from "ethers";
+
+
+const SEPOLIA_CHAIN_ID = 11155111;
+const ABI =  ["function approve(address spender, uint256 amount) returns (bool)"];
 
 function App(){
     // Phase 1: State
@@ -194,7 +198,13 @@ function App(){
                 return "Connect your wallet";
             }
 
-            const connectedAddress = ethereum.getAddress(accounts[0]);
+            const connectedAddress = ethers.getAddress(accounts[0]);
+            const network = await browserProvider.getNetwork();
+            const networkId = Number(network.chainId);
+
+            if(networkId !== SEPOLIA_CHAIN_ID){
+                return "Switch to ethereum sepolia!"
+            }
             if(connectedAddress !== scannedAddress){
                 return "Please, connect the same wallet scanned";
             }
@@ -206,6 +216,10 @@ function App(){
         return null;
     }
 
+    function getApprovalKey(scannedAddress, token, spender){
+        return `${ethers.getAddress(scannedAddress)}-${ethers.getAddress(token)}-${ethers.getAddress(spender)}`;
+    }
+    const inFlightKeys = useRef(new Set());
     // Phase 6: "Last scanned" timer
     // Does nothing until the first successful scan. Each new success changes lastScan,
     // which clears the old interval and starts a fresh one that counts up every second.
@@ -226,8 +240,43 @@ function App(){
     // Placeholder for the revoke flow. The old version only flipped a row to
     // "revoked" in local state; nothing was sent on-chain.
 
-    function handleRevoke(id){
-        getRevokeBlocker();
+    async function handleRevoke(id){
+        const row = revoke.find(rev => rev.id === id);
+        if(!row) return;
+        const key = getApprovalKey(scannedAddress, row.token, row.spender);
+
+        if(inFlightKeys.current.has(key)){
+            console.log("already in progress");
+            return;
+        }
+
+        inFlightKeys.current.add(key)
+
+        try{
+            const blocker = await getRevokeBlocker();
+            if(blocker !== null) {
+                console.log(blocker);
+                return;
+            }
+
+            const bProvider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await bProvider.getSigner();
+            const resolvedSigner = await signer.getAddress();
+            if(resolvedSigner !== scannedAddress){
+                console.log(resolvedSigner);
+                return;
+            }
+
+            let contract = new ethers.Contract(row.token, ABI, signer);
+            const tx = await contract.approve(row.spender, 0n);
+            console.log(tx.hash);
+            const receipt = await tx.wait();
+            console.log(receipt.status);
+        } catch(error){
+            console.error(error.code, error.message);
+        }finally{
+            inFlightKeys.current.delete(key);
+        }
     }
 
 
@@ -282,7 +331,7 @@ function App(){
                             </thead>
                             <tbody>
                                 {revoke.map((rev) => (
-                                    <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked} onClick={connectWallet}
+                                    <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked}
                                         isUnlimited={rev.isUnlimited} key={rev.id} id={rev.id} token={rev.token}
                                         spender={rev.spender} amount={rev.amount} decimals={rev.decimals} symbol={rev.symbol}
                                     />
