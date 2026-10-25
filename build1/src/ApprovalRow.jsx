@@ -8,13 +8,40 @@ id=id in the mock array
 onRevoke=function that set allowance to 0
 revoked=flag for checking if onRevoked has been called. t/f
 */
-function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited, decimals, symbol}){
+function ApprovalRow({token, spender, amount, id, onRevoke, isUnlimited, decimals, symbol, status}){
     // Phase 1: Revoked flag
     // Copies the revoked prop into a readable name used by the amount cell and the button.
 
     //check if revoke has been set to true
-    const isRevoked = revoked;
+    const state = status?.state;
+    const isRevoked = state === "revoked";
 
+
+    let buttonText = "Revoke";
+    let isButtonDisabled = false;
+
+    switch (state) {
+        case "awaiting-wallet":
+            buttonText = "Confirm in wallet...";
+            isButtonDisabled = true;
+            break;
+        case "confirming":
+            buttonText = "Confirming...";
+            isButtonDisabled = true;
+            break;
+        case "revoked":
+            buttonText = "Revoked";
+            isButtonDisabled = true;
+            break;
+        case "failed":
+            buttonText = "Failed, retry";
+            isButtonDisabled = false;
+            break;
+        default:
+            buttonText = "Revoke";
+            isButtonDisabled = false;
+            break;
+    }
 
     // Phase 2: Formatting helpers
     // truncateAddress shortens an address to 0x1234...abcd.
@@ -69,9 +96,20 @@ function ApprovalRow({token, spender, amount, id, onRevoke, revoked, isUnlimited
                 {!isRevoked && (isUnlimited ? "Unlimited" : formattedAmount(amount))}
             </td>
             <td title={spender}>{reducedSpenderAddress}</td>
-            <td><button onClick={() => onRevoke(id)} disabled={isRevoked}>
-                    {isRevoked ? "Revoked" : "Revoke"}
+            <td>
+                <button onClick={() => onRevoke(id)} disabled={isButtonDisabled}>
+                    {buttonText}
                 </button>
+
+                {status?.hash &&(
+                    <a
+                        href={`https://sepolia.etherscan.io/tx/${status.hash}`} target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: "12px", color: "#3b82f6", textDecoration: "underline", textAlign: "center" }}
+                    >
+                        View on Etherscan
+                    </a>
+                )}
             </td>
         </tr>
     );

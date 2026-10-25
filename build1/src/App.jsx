@@ -6,7 +6,24 @@ import { ethers, resolveAddress } from "ethers";
 
 
 const SEPOLIA_CHAIN_ID = 11155111;
-const ABI =  ["function approve(address spender, uint256 amount) returns (bool)"];
+const approveAndALllowanceABI =  [
+    "function approve(address spender, uint256 amount) returns (bool)",
+    "function allowance(address owner, address spender) view returns (uint256)"
+];
+
+async function waitForReceipt(provider, hash){
+    // repeat up to 60 times:
+    for (let attempt = 1; attempt <= 60; attempt++) {
+        const receipt = await provider.getTransactionReceipt(hash);
+        console.log("poll", attempt, receipt ? "found" : "none");
+        //if there is a receipt, return it 
+        if(receipt) return receipt;
+
+        //pause 3 seconds:
+        await new Promise(r => setTimeout(r, 3000));
+    }
+    return null;
+}
 
 function App(){
     // Phase 1: State
@@ -240,6 +257,12 @@ function App(){
     // Placeholder for the revoke flow. The old version only flipped a row to
     // "revoked" in local state; nothing was sent on-chain.
 
+    function updateStatus(key, state, extra){
+        setStatus(prev => ({...prev, [key] : {...prev[key], state, ...extra}}));
+        console.log("status:", key, state);
+    }
+// useEffect(() => { console.log("status now:", status); }, [status]);
+
     async function handleRevoke(id){
         const row = revoke.find(rev => rev.id === id);
         if(!row) return;
@@ -267,13 +290,42 @@ function App(){
                 return;
             }
 
-            let contract = new ethers.Contract(row.token, ABI, signer);
+            const contract = new ethers.Contract(row.token, approveAndALllowanceABI, signer);
+            updateStatus(key, "awaiting-wallet");
             const tx = await contract.approve(row.spender, 0n);
+            updateStatus(key, "confirming", {hash: tx.hash});
             console.log(tx.hash);
-            const receipt = await tx.wait();
+            
+            console.log("wait start", Date.now());
+            let receipt = await waitForReceipt(bProvider, tx.hash);
+            console.log("wait done", Date.now());
+
+            if(receipt === null || receipt.status !== 1){
+                updateStatus(key, "failed");
+                return;
+            }
             console.log(receipt.status);
+
+            const secContract = new ethers.Contract(row.token, approveAndALllowanceABI, bProvider);
+            const read = await secContract.allowance(scannedAddress, row.spender);
+
+            if(read === 0n){
+                updateStatus(key, "revoked");
+                
+            }else{
+                updateStatus(key, "failed");
+            }
         } catch(error){
             console.error(error.code, error.message);
+            if(error.code === "ACTION_REJECTED"){
+                setStatus(prev => {
+                    const nextStatus = {...prev};
+                    delete nextStatus[key];
+                    return nextStatus;
+                })
+            }else{
+                updateStatus(key, "failed");
+            } 
         }finally{
             inFlightKeys.current.delete(key);
         }
@@ -330,12 +382,15 @@ function App(){
                                 </tr>
                             </thead>
                             <tbody>
-                                {revoke.map((rev) => (
-                                    <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked}
-                                        isUnlimited={rev.isUnlimited} key={rev.id} id={rev.id} token={rev.token}
-                                        spender={rev.spender} amount={rev.amount} decimals={rev.decimals} symbol={rev.symbol}
-                                    />
-                                ))}
+                                {revoke.map((rev) => {
+                                    const key = getApprovalKey(scannedAddress, rev.token, rev.spender);
+                                    return (
+                                        <ApprovalRow onRevoke={handleRevoke} revoked={rev.revoked} status={status[key]}
+                                            isUnlimited={rev.isUnlimited} key={rev.id} id={rev.id} token={rev.token}
+                                            spender={rev.spender} amount={rev.amount} decimals={rev.decimals} symbol={rev.symbol}
+                                        />
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>
